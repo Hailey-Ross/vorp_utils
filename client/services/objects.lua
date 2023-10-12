@@ -1,42 +1,61 @@
 ObjectAPI = {}
 
--- networked: Whether to create a network object for the object. If false, the object exists only locally.
+
+
+---comment
+---@param modelhash type|<string, number>
+---@param x any
+---@param y any
+---@param z any
+---@param heading any
+---@param networked type <boolean,nil>
+---@param method type|<string>
+---@return type <table,nil>
 function ObjectAPI:Create(modelhash, x, y, z, heading, networked, method)
     local ObjClass = {}
+    local hash = modelhash
+    local isNetworked = networked
 
-    local hash = GetHashKey(CheckVar(modelhash, "p_package09"))
-    while not HasModelLoaded(hash) do
-        Wait(10)
-        RequestModel(hash)
+    if not Shared:LoadModel(hash) then
+        return nil
     end
 
-    ObjClass.Obj = CreateObject(hash, x, y, z, CheckVar(networked, true))
+    if isNetworked == nil then
+        isNetworked = false
+    end
+
+    ObjClass.Obj = CreateObject(hash, x, y, z, isNetworked, false, false, false, false)
+    while not DoesEntityExist(ObjClass.Obj) do
+        Wait(10)
+    end
     SetEntityHeading(ObjClass.Obj, heading)
 
     if CheckVar(method, "standard") == "standard" then
         PlaceObjectOnGroundProperly(ObjClass.Obj, true)
+        Wait(100)
         FreezeEntityPosition(ObjClass.Obj, true)
     end
+    SetModelAsNoLongerNeeded(hash)
 
     function ObjClass:PickupLight(state)
-        Citizen.InvokeNative(0x7DFB49BCDB73089A, self.Obj,  CheckVar(state, true))
+        Citizen.InvokeNative(0x7DFB49BCDB73089A, self.Obj, CheckVar(state, true))
     end
 
-    function ObjClass:Freeze(state) 
+    function ObjClass:Freeze(state)
         FreezeEntityPosition(self.Obj, CheckVar(state, true))
     end
 
-    function ObjClass:SetHeading(head) 
-        SetEntityHeading(self.Obj, CheckVar(state, head))
+    function ObjClass:SetHeading(state)
+        SetEntityHeading(self.Obj, CheckVar(state, true))
     end
 
-    function ObjClass:PlaceOnGround(state) 
+    function ObjClass:PlaceOnGround(state)
         PlaceObjectOnGroundProperly(self.Obj, CheckVar(state, true))
     end
 
     -- The engine will keep object when players leave the area
-    function ObjClass:SetAsMission(state) 
-        SetEntityAsMissionEntity(self.Obj, CheckVar(state, true))
+    function ObjClass:SetAsMission(state)
+        SetEntityAsMissionEntity(self.Obj, CheckVar(state, true), true)
     end
 
     -- The engine will remove when players leave the area
@@ -52,7 +71,6 @@ function ObjectAPI:Create(modelhash, x, y, z, heading, networked, method)
     function ObjClass:SetNotHorseJumpable(state)
         SetNotJumpableByHorse(self.Obj, CheckVar(state, true))
     end
-
 
     function ObjClass:Remove()
         DeleteObject(self.Obj)

@@ -1,7 +1,23 @@
 PedAPI = {}
 
-function PedAPI:Create(modelhash, x, y, z, heading, location, safeground, options, outfit)
+---@param modelhash type<string, number>
+---@param x any
+---@param y any
+---@param z any
+---@param heading any
+---@param location type <string>
+---@param safeground type <boolean>
+---@param options type <table <string>>
+---@param outfit type <boolean>
+---@param networked type <boolean, nil>
+---@param vector4 any
+---@return type <table, nil>
+function PedAPI:Create(modelhash, x, y, z, heading, location, safeground, options, outfit, networked, vector4)
     local PedClass = {}
+
+    if not x and not y and not z and not heading then
+        x, y, z, heading = table.unpack(vector4)
+    end
 
     if CheckVar(safeground, true) then
         local valid, outPosition = GetSafeCoordForPed(x, y, z, false, 16)
@@ -24,19 +40,30 @@ function PedAPI:Create(modelhash, x, y, z, heading, location, safeground, option
         end
     end
 
-    local hash = GetHashKey(CheckVar(modelhash, "s_m_m_valdeputy_01"))
-    while not HasModelLoaded(hash) do
-        Wait(10)
-        RequestModel(hash)
+    if not Shared:LoadModel(modelhash) then
+        return nil
+    end
+
+    local hash
+    if type(modelhash) == "string" then
+        hash = joaat(modelhash)
     end
 
 
     if location == nil or location == 'world' then
-        PedClass.Ped = CreatePed(hash, x, y, z, CheckVar(heading, 0), true, true, 0, 0)
+        if networked == nil then
+            networked = false
+        end
+
+        PedClass.Ped = CreatePed(hash, x, y, z, CheckVar(heading, 0), networked, true, false, false)
+
+        while not DoesEntityExist(PedClass.Ped) do
+            Wait(10)
+        end
     elseif location == 'vehicle' then
         if options == nil or options.vehicle == nil then
             print('Vehicle is required to spawn a ped in a vehicle')
-            return
+            return nil
         end
 
         local seats = {
@@ -54,18 +81,25 @@ function PedAPI:Create(modelhash, x, y, z, heading, location, safeground, option
             VS_NUM_SEATS = 8
         }
 
-        PedClass.Ped = CreatePedInsideVehicle(options.vehicle, hash, CheckVar(seats[options.seat], -2), 1, 1, 1)
+        PedClass.Ped = CreatePedInsideVehicle(options.vehicle, hash, CheckVar(seats[options.seat], -2), networked or true,
+            true, true)
+        while not DoesEntityExist(PedClass.Ped) do
+            Wait(10)
+        end
     elseif location == 'mount' then
         if options == nil or options.mount == nil then
             print('mount is required to spawn a ped in a mount')
-            return
+            return nil
         end
 
         PedClass.Ped = CreatePedOnMount(options.mount, hash, -1, true, true, true, true)
+        while not DoesEntityExist(PedClass.Ped) do
+            Wait(10)
+        end
     else
         print("Error: Not a valid location for ped")
     end -- ApplyPedMetapedOutfit
-
+    SetModelAsNoLongerNeeded(hash)
     Citizen.InvokeNative(0x58A850EAEE20FAA3, PedClass.Ped)
     Citizen.InvokeNative(0x9587913B9E772D29, PedClass.Ped, true) --place entity on ground
 
@@ -76,12 +110,12 @@ function PedAPI:Create(modelhash, x, y, z, heading, location, safeground, option
         Citizen.InvokeNative(
             0x1902C4CFCC5BE57C,
             PedClass.Ped,
-            outfit--[[ Hash ]]
+            outfit --[[ Hash ]]
         )
 
         Citizen.InvokeNative(
             0xCC8CA3E88256E58F,
-            PedClass.Ped--[[ Ped ]]
+            PedClass.Ped --[[ Ped ]]
         )
     else
         Citizen.InvokeNative(0x283978A15512B2FE, PedClass.Ped, true) --SetRandomOutfitVariation
@@ -178,7 +212,7 @@ function PedAPI:Create(modelhash, x, y, z, heading, location, safeground, option
 
     function PedClass:AttackTarget(target, style)
         --styles: GUARD, COMBAT_ANIMAL, LAW, LAW_SHERIFF
-        Citizen.InvokeNative(0xBD75500141E4725C, self.Ped, GetHashKey(CheckVar(style, 'LAW'))) -- SetPedCombatAttributeHash
+        Citizen.InvokeNative(0xBD75500141E4725C, self.Ped, GetHashKey(CheckVar(style, 'LAW')))     -- SetPedCombatAttributeHash
         Citizen.InvokeNative(0xF166E48407BAC484, self.Ped, CheckVar(target, PlayerPedId()), 0, 16) -- TaskCombatPed --Atacks target
     end
 
@@ -197,7 +231,8 @@ function PedAPI:Create(modelhash, x, y, z, heading, location, safeground, option
         return self.Ped
     end
 
-    function PedClass:FollowToOffsetOfEntity(entity, offsetX, offsetY, offsetZ, movementSpeed, timeout, stoppingRange, persistFollowing, p9, walkOnly)
+    function PedClass:FollowToOffsetOfEntity(entity, offsetX, offsetY, offsetZ, movementSpeed, timeout, stoppingRange,
+                                             persistFollowing, p9, walkOnly)
         TaskFollowToOffsetOfEntity(self.Ped, CheckVar(entity, PlayerPedId()), offsetX, offsetY, offsetZ, movementSpeed,
             timeout, stoppingRange, persistFollowing, p9, walkOnly, 0, 0, 1)
         return self.Ped
@@ -215,14 +250,15 @@ function PedAPI:Create(modelhash, x, y, z, heading, location, safeground, option
         Citizen.InvokeNative(0x75415EE0CB583760, self.Ped, attribute, value)
     end
 
-    function PedClass:SetAttributeBaseRank(attribute, value)        
+    function PedClass:SetAttributeBaseRank(attribute, value)
         Citizen.InvokeNative(0x5DA12E025D47D4E5, self.Ped, attribute, value)
     end
-    function PedClass:SetAttributeBonousRank(attribute, value)        
+
+    function PedClass:SetAttributeBonousRank(attribute, value)
         Citizen.InvokeNative(0x920F9488BD115EFB, self.Ped, attribute, value)
     end
 
-    function PedClass:SetAttributeOverpower(attribute, value, makesound)        
+    function PedClass:SetAttributeOverpower(attribute, value, makesound)
         Citizen.InvokeNative(0xF6A7C08DF2E28B28, self.Ped, attribute, value, makesound)
     end
 
@@ -243,12 +279,12 @@ function PedAPI:Create(modelhash, x, y, z, heading, location, safeground, option
         Citizen.InvokeNative(
             0x1902C4CFCC5BE57C,
             self.Ped,
-            outfit--[[ Hash ]]
+            outfit --[[ Hash ]]
         )
 
         Citizen.InvokeNative(
             0xCC8CA3E88256E58F,
-            self.Ped--[[ Ped ]]
+            self.Ped --[[ Ped ]]
         )
     end
 
